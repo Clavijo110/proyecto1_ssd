@@ -1,0 +1,209 @@
+{
+  "info": {
+    "name": "FHIR-Lite API - Proyecto 1",
+    "description": "Colección Postman para API REST FHIR-Lite con doble API-Key",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "admin_access_key",
+      "value": "REEMPLAZAR_CON_ACCESS_KEY_ADMIN"
+    },
+    {
+      "key": "admin_permission_key",
+      "value": "REEMPLAZAR_CON_PERMISSION_KEY_ADMIN"
+    },
+    {
+      "key": "medico_access_key",
+      "value": "REEMPLAZAR_CON_ACCESS_KEY_MEDICO"
+    },
+    {
+      "key": "medico_permission_key",
+      "value": "REEMPLAZAR_CON_PERMISSION_KEY_MEDICO"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Creación de paciente exitosa",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Access-Key",
+            "value": "{{admin_access_key}}"
+          },
+          {
+            "key": "X-Permission-Key",
+            "value": "{{admin_permission_key}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"PAC002\",\n  \"name\": \"María\",\n  \"family_name\": \"García López\",\n  \"birth_date\": \"1985-06-20\",\n  \"gender\": \"female\",\n  \"identification_doc\": \"12345678A\",\n  \"medical_summary\": \"Paciente sin alergias conocidas. Hipertensión controlada.\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/fhir/Patient",
+          "host": ["{{base_url}}"],
+          "path": ["fhir", "Patient"]
+        },
+        "description": "Crear paciente con Admin o Médico. Respuesta 200 = éxito."
+      }
+    },
+    {
+      "name": "2. Intento de borrado fallido (Médico sin permiso)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "X-Access-Key",
+            "value": "{{medico_access_key}}"
+          },
+          {
+            "key": "X-Permission-Key",
+            "value": "{{medico_permission_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/fhir/Patient/1",
+          "host": ["{{base_url}}"],
+          "path": ["fhir", "Patient", "1"]
+        },
+        "description": "Médico intenta DELETE paciente → Error 403 (no tiene permiso delete). Solo Admin puede borrar pacientes."
+      }
+    },
+    {
+      "name": "3. Consulta paginada - GET Patient",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Access-Key",
+            "value": "{{admin_access_key}}"
+          },
+          {
+            "key": "X-Permission-Key",
+            "value": "{{admin_permission_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/fhir/Patient?limit=10&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["fhir", "Patient"],
+          "query": [
+            {"key": "limit", "value": "10"},
+            {"key": "offset", "value": "0"}
+          ]
+        },
+        "description": "GET /fhir/Patient paginado. limit=10, offset=0 → primeros 10 pacientes."
+      }
+    },
+    {
+      "name": "4. Crear observación (signo vital)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Access-Key",
+            "value": "{{admin_access_key}}"
+          },
+          {
+            "key": "X-Permission-Key",
+            "value": "{{admin_permission_key}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"patient_id\": 1,\n  \"code\": \"heart-rate\",\n  \"display\": \"Frecuencia cardíaca\",\n  \"value_quantity\": 75,\n  \"unit\": \"beats/min\",\n  \"effective_datetime\": null\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/fhir/Observation",
+          "host": ["{{base_url}}"],
+          "path": ["fhir", "Observation"]
+        },
+        "description": "Crear observación de signo vital para paciente."
+      }
+    },
+    {
+      "name": "5. Consulta paginada - GET Observation",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Access-Key",
+            "value": "{{admin_access_key}}"
+          },
+          {
+            "key": "X-Permission-Key",
+            "value": "{{admin_permission_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/fhir/Observation?patient_id=1&limit=10&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["fhir", "Observation"],
+          "query": [
+            {"key": "patient_id", "value": "1"},
+            {"key": "limit", "value": "10"},
+            {"key": "offset", "value": "0"}
+          ]
+        },
+        "description": "GET /fhir/Observation paginado por paciente."
+      }
+    },
+    {
+      "name": "6. Rate Limit 429 (ejecutar rápido 61+ veces)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Access-Key",
+            "value": "{{admin_access_key}}"
+          },
+          {
+            "key": "X-Permission-Key",
+            "value": "{{admin_permission_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/fhir/Patient?limit=1&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["fhir", "Patient"],
+          "query": [
+            {"key": "limit", "value": "1"},
+            {"key": "offset", "value": "0"}
+          ]
+        },
+        "description": "Ejecutar 61+ veces en 1 minuto para recibir 429 Too Many Requests (rate limit Anti-DoS)."
+      }
+    },
+    {
+      "name": "7. Sin API Key → 401",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/fhir/Patient?limit=5&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["fhir", "Patient"],
+          "query": [
+            {"key": "limit", "value": "5"},
+            {"key": "offset", "value": "0"}
+          ]
+        },
+        "description": "Sin X-Access-Key ni X-Permission-Key → Error 401 Unauthorized."
+      }
+    }
+  ]
+}
