@@ -122,8 +122,8 @@ Después del primer despliegue, usar el Shell de Render o una migración para ej
 ## Entregables
 
 1. **Código fuente**: Este repositorio en GitHub
-2. **URL Backend**: https://tu-servidor.onrender.com
-3. **URL Frontend**: https://tu-app.streamlit.app
+2. **URL Backend**: https://proyecto1-ssd.onrender.com
+3. **URL Frontend**: https://proyecto1ssd-f7gjxrs6gxusjpet52dtuk.streamlit.app/
 4. **Postman**: Ver `postman_collection.json` (importar en Postman)
 
 ## Estructura del proyecto
