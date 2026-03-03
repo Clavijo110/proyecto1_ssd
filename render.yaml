@@ -1,0 +1,13 @@
+# Render Blueprint - colocar en la raíz del repositorio
+services:
+  - type: web
+    name: proyecto1-ssd-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        generateValue: true

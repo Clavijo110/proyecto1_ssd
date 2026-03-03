@@ -77,9 +77,9 @@ Acceder a http://localhost:8501
 
 1. Crear Web Service y conectarlo al repositorio.
 2. Runtime: Python 3.
-3. Build: `pip install -r backend/requirements.txt`
-4. Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Root directory: `backend`
+3. **Root Directory**: `backend` (importante: Render ejecuta el build dentro de esta carpeta).
+4. Build: `pip install -r requirements.txt`
+5. Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 6. Variables de entorno: `DATABASE_URL`, `ENCRYPTION_KEY`
 
 ### Base de datos PostgreSQL en Render
