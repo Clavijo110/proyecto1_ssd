@@ -1,6 +1,6 @@
 """Configuración y variables de entorno."""
 import os
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()

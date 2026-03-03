@@ -244,7 +244,9 @@ def main():
                         name = st.text_input("Nombre", value=p.get("name", ""))
                         family_name = st.text_input("Apellido", value=p.get("family_name", ""))
                         birth_date = st.text_input("Fecha nacimiento", value=p.get("birth_date") or "")
-                        gender = st.selectbox("Género", ["", "male", "female", "other"], index=["", "male", "female", "other"].index((p.get("gender") or "")))
+                        _g = (p.get("gender") or "")
+                        _opts = ["", "male", "female", "other"]
+                        gender = st.selectbox("Género", _opts, index=_opts.index(_g) if _g in _opts else 0)
                         identification_doc = st.text_input("Documento", value=p.get("identification_doc") or "")
                         medical_summary = st.text_area("Resumen médico", value=p.get("medical_summary") or "")
                         if st.form_submit_button("Guardar"):

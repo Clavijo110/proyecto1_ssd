@@ -13,8 +13,8 @@ Sistema de gestión clínica con API REST basada en estándar FHIR-Lite, Postgre
 ### 1. Clonar y preparar entorno
 
 ```bash
-git clone <url-del-repositorio>
-cd Proyecto1-SSD
+git clone https://github.com/Clavijo110/proyecto1_ssd.git
+cd proyecto1_ssd
 ```
 
 ### 2. Backend
@@ -96,9 +96,13 @@ Acceder a http://localhost:8501
 4. Root directory: `frontend`
 5. Secrets: `API_BASE_URL = https://tu-backend.onrender.com`
 
-### Ejecutar init_api_keys en Render
+### Ejecutar init_api_keys y recuperar API Keys
 
-Después del primer despliegue, usar el Shell de Render o una migración para ejecutar `init_api_keys.py` y generar las API Keys.
+Después del primer despliegue, generar las API Keys:
+
+- **Opción A (Render Shell)**: En el Web Service → Shell → `cd backend && python init_api_keys.py`
+- **Opción B (local con External URL)**: `DATABASE_URL=<External URL> python backend/init_api_keys.py`
+- **Recuperar keys existentes**: `DATABASE_URL=<External URL> python backend/list_api_keys.py`
 
 ## API Endpoints FHIR-Lite
 
@@ -109,8 +113,10 @@ Después del primer despliegue, usar el Shell de Render o una migración para ej
 | POST | /fhir/Patient | Crear paciente | admin, medico |
 | PUT | /fhir/Patient/{id} | Actualizar paciente | admin, medico |
 | DELETE | /fhir/Patient/{id} | Borrar paciente | **solo admin** |
-| GET | /fhir/Observation?patient_id=1&limit=10&offset=0 | Listar observaciones | admin, medico, paciente* |
+| GET | /fhir/Observation?patient_id=1&limit=10&offset=0 | Listar observaciones (paginado) | admin, medico, paciente* |
+| GET | /fhir/Observation/{id} | Obtener observación | admin, medico, paciente* |
 | POST | /fhir/Observation | Crear observación | admin, medico |
+| DELETE | /fhir/Observation/{id} | Borrar observación | **solo admin** |
 
 \* Paciente solo ve sus propios datos.
 
@@ -140,6 +146,7 @@ Proyecto1-SSD/
 │   ├── encryption.py    # Cifrado de datos sensibles
 │   ├── limiter.py       # Rate limiting (Anti-DoS)
 │   ├── init_api_keys.py # Crear API Keys iniciales
+│   ├── list_api_keys.py # Listar API Keys (recuperación)
 │   ├── routers/
 │   │   ├── patient.py
 │   │   └── observation.py
