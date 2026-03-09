@@ -8,11 +8,14 @@ from models import ApiKey
 # Roles y permisos
 ROLES = {"admin", "medico", "paciente"}
 
-# Acciones permitidas por rol: admin todo, medico sin delete, paciente solo read propio
+# Acciones permitidas por rol:
+# - Admin: gestiona usuarios y corrige datos, NO crea ni elimina pacientes
+# - Médico: registra y consulta historias clínicas, NO elimina pacientes
+# - Paciente: solo lectura de sus propios datos
 ROLE_PERMISSIONS = {
-    "admin": {"create", "read", "update", "delete"},
-    "medico": {"create", "read", "update"},  # No delete
-    "paciente": {"read"},  # Solo lectura de sus datos
+    "admin": {"read", "update"},
+    "medico": {"create", "read", "update"},
+    "paciente": {"read"},
 }
 
 

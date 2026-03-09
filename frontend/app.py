@@ -238,11 +238,11 @@ def login_form():
 
 def vista_admin():
     """
-    Admin: gestión de pacientes (solo datos identificativos, sin info clínica).
-    Puede crear, editar y eliminar pacientes. NO ve observaciones ni gráficas.
+    Admin: gestión administrativa de pacientes (solo datos identificativos, sin info clínica).
+    Puede consultar y corregir datos básicos. NO puede crear ni eliminar pacientes.
     """
     st.title("🛡️ Panel de Administración")
-    st.caption("Gestión de registros de pacientes. Los datos clínicos son de uso exclusivo del personal médico.")
+    st.caption("Consulta y corrección de datos de registro. Los datos clínicos son de uso exclusivo del personal médico.")
 
     page_size = st.sidebar.selectbox("Registros por página", [10, 25, 50, 100], index=1, key="page_size")
     page_offset = st.session_state.get("page_offset", 0)
@@ -254,17 +254,15 @@ def vista_admin():
     patients = data.get("items", [])
     total = data.get("total", 0)
 
-    tab_lista, tab_nuevo, tab_editar = st.tabs(["📋 Registros", "➕ Nuevo paciente", "✏️ Editar paciente"])
+    tab_lista, tab_editar = st.tabs(["📋 Registros de pacientes", "✏️ Corregir datos"])
 
-    # ── TAB: Lista
+    # ── TAB: Lista (solo datos identificativos, sin info clínica)
     with tab_lista:
         if not patients:
             st.info("No hay pacientes registrados.")
         else:
             paginacion_controls(total, page_size, page_offset)
             st.divider()
-
-            # Tabla administrativa: sin datos clínicos
             df = pd.DataFrame([{
                 "ID": p["id"],
                 "Identifier": p["identifier"],
@@ -275,55 +273,7 @@ def vista_admin():
             } for p in patients])
             st.dataframe(df, use_container_width=True, hide_index=True)
 
-            st.divider()
-            # Eliminar paciente
-            st.subheader("Eliminar paciente")
-            del_options = {f"ID {p['id']} – {p['name']} {p['family_name']}": p["id"] for p in patients}
-            del_sel = st.selectbox("Seleccionar paciente a eliminar", list(del_options.keys()), key="del_select")
-            del_id = del_options[del_sel]
-
-            col_btn, col_warn = st.columns([1, 3])
-            with col_btn:
-                if st.button("🗑️ Eliminar", type="secondary"):
-                    if st.session_state.get("confirm_delete") == del_id:
-                        r2 = api_request("DELETE", f"{API_BASE}/fhir/Patient/{del_id}")
-                        if r2 and r2.status_code == 200:
-                            st.success("Paciente eliminado.")
-                            st.session_state.pop("confirm_delete", None)
-                            st.rerun()
-                    else:
-                        st.session_state["confirm_delete"] = del_id
-            with col_warn:
-                if st.session_state.get("confirm_delete") == del_id:
-                    st.warning("⚠️ Haz clic en **Eliminar** de nuevo para confirmar.")
-
-    # ── TAB: Nuevo paciente
-    with tab_nuevo:
-        st.subheader("Registrar nuevo paciente")
-        with st.form("crear_paciente"):
-            c1, c2 = st.columns(2)
-            with c1:
-                identifier = st.text_input("Identifier *", placeholder="PAC001")
-                name = st.text_input("Nombre *", placeholder="Juan")
-                family_name = st.text_input("Apellido *", placeholder="Pérez")
-            with c2:
-                birth_date = st.text_input("Fecha de nacimiento", placeholder="1990-01-15")
-                gender = st.selectbox("Género", ["", "male", "female", "other"])
-            if st.form_submit_button("Crear paciente", type="primary"):
-                if not identifier or not name or not family_name:
-                    st.error("Identifier, Nombre y Apellido son obligatorios.")
-                else:
-                    body = {"identifier": identifier, "name": name, "family_name": family_name}
-                    if birth_date:
-                        body["birth_date"] = birth_date
-                    if gender:
-                        body["gender"] = gender
-                    r2 = api_request("POST", f"{API_BASE}/fhir/Patient", json=body)
-                    if r2 and r2.status_code in (200, 201):
-                        st.success(f"Paciente **{name} {family_name}** creado correctamente.")
-                        st.rerun()
-
-    # ── TAB: Editar
+    # ── TAB: Editar datos básicos (sin campos clínicos)
     with tab_editar:
         if not patients:
             st.info("No hay pacientes para editar.")
@@ -336,7 +286,7 @@ def vista_admin():
             if rp and rp.status_code == 200:
                 p = rp.json()
                 with st.form("editar_paciente"):
-                    st.subheader(f"Editando: {p['name']} {p['family_name']}")
+                    st.subheader(f"Corrigiendo datos de: {p['name']} {p['family_name']}")
                     c1, c2 = st.columns(2)
                     with c1:
                         name = st.text_input("Nombre", value=p.get("name", ""))
@@ -346,7 +296,7 @@ def vista_admin():
                         _opts = ["", "male", "female", "other"]
                         _g = p.get("gender") or ""
                         gender = st.selectbox("Género", _opts, index=_opts.index(_g) if _g in _opts else 0)
-                    if st.form_submit_button("Guardar cambios", type="primary"):
+                    if st.form_submit_button("Guardar corrección", type="primary"):
                         body = {}
                         if name:
                             body["name"] = name
@@ -358,7 +308,7 @@ def vista_admin():
                             body["gender"] = gender
                         r2 = api_request("PUT", f"{API_BASE}/fhir/Patient/{edit_id}", json=body)
                         if r2 and r2.status_code == 200:
-                            st.success("Paciente actualizado.")
+                            st.success("Datos corregidos correctamente.")
                             st.rerun()
 
 
