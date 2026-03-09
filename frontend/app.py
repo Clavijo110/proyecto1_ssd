@@ -206,7 +206,7 @@ def login_form():
                     st.error("Debes ingresar ambas API Keys.")
                     return
                 try:
-                    # Validar keys y obtener rol
+                    # Validar keys y obtener rol desde /me
                     r = requests.get(
                         f"{API_BASE}/me",
                         headers={"X-Access-Key": access_key, "X-Permission-Key": permission_key},
@@ -222,6 +222,8 @@ def login_form():
                         st.rerun()
                     elif r.status_code == 401:
                         st.error("Claves inválidas. Verifica tus API Keys.")
+                    elif r.status_code == 404:
+                        st.error("El backend no está actualizado. Realiza un nuevo deploy en Render para activar el endpoint /me.")
                     else:
                         st.error(f"Error del servidor: {r.status_code}")
                 except requests.exceptions.ConnectionError:
