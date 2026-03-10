@@ -276,6 +276,16 @@ def paginacion_controls(total: int, page_size: int, page_offset: int):
             st.rerun()
 
 
+def mask_field(value, visible: int = 0) -> str:
+    """Enmascara un valor dejando solo los primeros `visible` caracteres visibles."""
+    if not value:
+        return "••••••"
+    s = str(value)
+    if visible == 0 or visible >= len(s):
+        return "••••••"
+    return s[:visible] + "•" * max(4, len(s) - visible)
+
+
 def filtrar_pacientes(patients: list, query: str) -> list:
     """Filtra la lista de pacientes por nombre, apellido o identifier (case-insensitive)."""
     if not query.strip():
@@ -349,7 +359,7 @@ def vista_admin():
 
     # Controles en sidebar
     page_size = st.sidebar.selectbox("Registros por página", [10, 25, 50, 100], index=1, key="page_size")
-    buscar = st.sidebar.text_input("🔍 Buscar paciente", placeholder="Nombre, apellido o identifier...", key="buscar_admin")
+    buscar_id = st.sidebar.text_input("🔍 Buscar por ID", placeholder="Ej: 5", key="buscar_admin")
     page_offset = st.session_state.get("page_offset", 0)
 
     r = api_request("GET", f"{API_BASE}/fhir/Patient", params={"limit": page_size, "offset": page_offset})
@@ -359,32 +369,31 @@ def vista_admin():
     patients_page = data.get("items", [])
     total = data.get("total", 0)
 
-    # Filtrado client-side sobre la página actual
-    patients = filtrar_pacientes(patients_page, buscar)
+    # Filtrado por ID (datos personales no se muestran al admin)
+    patients = [p for p in patients_page if not buscar_id or str(p["id"]) == buscar_id.strip()]
 
     tab_lista, tab_nuevo, tab_editar = st.tabs(["📋 Registros", "➕ Nuevo paciente", "✏️ Editar / Eliminar"])
 
-    # ── TAB: Lista
+    # ── TAB: Lista — solo ID visible, resto enmascarado
     with tab_lista:
         paginacion_controls(total, page_size, page_offset)
         st.divider()
+        st.caption("🔒 Los datos personales están enmascarados. Solo el ID del registro es visible en esta vista.")
 
-        if buscar and not patients:
-            st.warning(f"No se encontraron pacientes que coincidan con «{buscar}» en esta página. Prueba en otra página o limpia el filtro.")
+        if buscar_id and not patients:
+            st.warning(f"No se encontró ningún paciente con ID «{buscar_id}» en esta página.")
         elif not patients_page:
             st.info("No hay pacientes registrados.")
         else:
             df = pd.DataFrame([{
                 "ID": p["id"],
-                "Identifier": p["identifier"],
-                "Nombre": p["name"],
-                "Apellido": p["family_name"],
-                "Fecha nacimiento": p.get("birth_date") or "—",
-                "Género": p.get("gender") or "—",
+                "Identifier": mask_field(p.get("identifier")),
+                "Nombre": mask_field(p.get("name")),
+                "Apellido": mask_field(p.get("family_name")),
+                "Fecha nacimiento": mask_field(p.get("birth_date")),
+                "Género": mask_field(p.get("gender")),
             } for p in patients])
             st.dataframe(df, use_container_width=True, hide_index=True)
-            if buscar:
-                st.caption(f"Mostrando {len(patients)} resultado(s) filtrados de {len(patients_page)} en esta página.")
 
     # ── TAB: Nuevo paciente
     with tab_nuevo:
@@ -412,29 +421,31 @@ def vista_admin():
                         st.success(f"Paciente **{name} {family_name}** creado correctamente.")
                         st.rerun()
 
-    # ── TAB: Editar / Eliminar (usa el filtro de búsqueda del sidebar)
+    # ── TAB: Editar / Eliminar — selectbox por ID, form muestra datos reales para corrección
     with tab_editar:
         pool = patients if patients else patients_page
         if not pool:
             st.info("No hay pacientes registrados.")
         else:
-            if buscar and not patients:
-                st.warning(f"No hay coincidencias para «{buscar}» en esta página.")
+            if buscar_id and not patients:
+                st.warning(f"No hay ningún paciente con ID «{buscar_id}» en esta página.")
             else:
+                st.info("🔒 Usa el campo **Buscar por ID** del panel izquierdo para localizar el registro a modificar.")
+
                 # ── Sección editar
                 st.subheader("✏️ Editar datos")
-                edit_options = {f"{p['name']} {p['family_name']}  —  ID {p['id']}  |  {p['identifier']}": p["id"] for p in pool}
+                edit_options = {f"Paciente  #  {p['id']}": p["id"] for p in pool}
                 edit_sel = st.selectbox(
-                    "Seleccionar paciente a editar",
+                    "Seleccionar registro a editar",
                     list(edit_options.keys()),
                     key="edit_select",
-                    help="Usa el buscador del panel izquierdo para filtrar la lista",
                 )
                 edit_id = edit_options[edit_sel]
 
                 rp = api_request("GET", f"{API_BASE}/fhir/Patient/{edit_id}")
                 if rp and rp.status_code == 200:
                     p = rp.json()
+                    st.caption("⚠️ Datos visibles solo para corrección. No los compartas ni registres fuera del sistema.")
                     with st.form("editar_paciente"):
                         c1, c2 = st.columns(2)
                         with c1:
@@ -464,12 +475,11 @@ def vista_admin():
 
                 # ── Sección eliminar
                 st.subheader("🗑️ Eliminar paciente")
-                del_options = {f"{p['name']} {p['family_name']}  —  ID {p['id']}  |  {p['identifier']}": p["id"] for p in pool}
+                del_options = {f"Paciente  #  {p['id']}": p["id"] for p in pool}
                 del_sel = st.selectbox(
-                    "Seleccionar paciente a eliminar",
+                    "Seleccionar registro a eliminar",
                     list(del_options.keys()),
                     key="del_select",
-                    help="Usa el buscador del panel izquierdo para filtrar la lista",
                 )
                 del_id = del_options[del_sel]
 
