@@ -25,11 +25,9 @@ if _host.startswith("dpg-") and "-a" in _host and "." not in _host:
     external_host = f"{_host}.{region}-postgres.render.com"
     DATABASE_URL = DATABASE_URL.replace(_host, external_host)
 
-# Clave para encriptación (base64 44 chars para Fernet, o string para derivar)
-ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
-if not ENCRYPTION_KEY:
-    from cryptography.fernet import Fernet
-    ENCRYPTION_KEY = Fernet.generate_key().decode()  # Solo para desarrollo local
+# ENCRYPTION_KEY la lee directamente encryption.py desde os.getenv.
+# No se genera una clave aleatoria aquí para evitar que cada reinicio
+# del servidor use una clave diferente e inutilice datos cifrados anteriormente.
 
 # Rate limiting
 RATE_LIMIT = os.getenv("RATE_LIMIT", "60/minute")

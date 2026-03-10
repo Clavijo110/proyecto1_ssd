@@ -18,7 +18,19 @@ import models  # noqa: F401
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicializar BD al arrancar."""
+    """Inicializar BD al arrancar y verificar configuración crítica."""
+    import os, logging
+    logger = logging.getLogger("startup")
+
+    # Verificar que ENCRYPTION_KEY está configurada en el entorno
+    if not os.getenv("ENCRYPTION_KEY"):
+        logger.critical(
+            "⚠️  ENCRYPTION_KEY no está configurada como variable de entorno. "
+            "Configúrala en Render > Environment antes de continuar."
+        )
+    else:
+        logger.info("✅ ENCRYPTION_KEY cargada correctamente.")
+
     init_db()
     yield
 
