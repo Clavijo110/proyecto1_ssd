@@ -241,38 +241,58 @@ def form_nueva_observacion(patient_id: int):
 
 
 def paginacion_controls(total: int, page_size: int, page_offset: int):
-    """Paginación con botones primera/anterior/siguiente/última y salto directo a página."""
+    """Paginación: primera/anterior/siguiente/última + campo numérico con botón Ir."""
     total_pages = max(1, (total + page_size - 1) // page_size)
     current_page = (page_offset // page_size) + 1
 
-    c1, c2, c3, c4, c5 = st.columns([1, 1, 3, 1, 1])
+    # Sincroniza el campo numérico cuando la navegación cambia la página
+    if st.session_state.get("_pag_page") != current_page:
+        st.session_state["_pag_page"] = current_page
+        st.session_state["page_jump"] = current_page
+
+    c1, c2, c3, c4, c5, c6 = st.columns([1, 1, 2, 1, 1, 1])
     with c1:
         if st.button("⏮", help="Primera página", disabled=(current_page == 1), key="btn_first"):
             st.session_state["page_offset"] = 0
+            st.session_state["_pag_page"] = 1
+            st.session_state["page_jump"] = 1
             st.rerun()
     with c2:
         if st.button("◀", help="Página anterior", disabled=(current_page == 1), key="btn_prev"):
-            st.session_state["page_offset"] = max(0, page_offset - page_size)
+            new_off = max(0, page_offset - page_size)
+            new_pg = new_off // page_size + 1
+            st.session_state["page_offset"] = new_off
+            st.session_state["_pag_page"] = new_pg
+            st.session_state["page_jump"] = new_pg
             st.rerun()
     with c3:
-        target = st.number_input(
-            "Ir a página",
+        jump = st.number_input(
+            "Página",
             min_value=1, max_value=total_pages,
-            value=current_page, step=1,
-            key="page_input",
+            step=1, key="page_jump",
             label_visibility="collapsed",
         )
-        st.caption(f"Página **{current_page}** de **{total_pages}** · **{total}** registros en total")
-        if int(target) != current_page:
-            st.session_state["page_offset"] = (int(target) - 1) * page_size
-            st.rerun()
+        st.caption(f"Página **{current_page}** / **{total_pages}** · **{total}** registros")
     with c4:
-        if st.button("▶", help="Página siguiente", disabled=(current_page >= total_pages), key="btn_next"):
-            st.session_state["page_offset"] = page_offset + page_size
+        if st.button("Ir", key="btn_go", help="Ir a la página indicada"):
+            new_off = (int(jump) - 1) * page_size
+            st.session_state["page_offset"] = new_off
+            st.session_state["_pag_page"] = int(jump)
             st.rerun()
     with c5:
+        if st.button("▶", help="Página siguiente", disabled=(current_page >= total_pages), key="btn_next"):
+            new_off = page_offset + page_size
+            new_pg = new_off // page_size + 1
+            st.session_state["page_offset"] = new_off
+            st.session_state["_pag_page"] = new_pg
+            st.session_state["page_jump"] = new_pg
+            st.rerun()
+    with c6:
         if st.button("⏭", help="Última página", disabled=(current_page >= total_pages), key="btn_last"):
-            st.session_state["page_offset"] = (total_pages - 1) * page_size
+            new_off = (total_pages - 1) * page_size
+            st.session_state["page_offset"] = new_off
+            st.session_state["_pag_page"] = total_pages
+            st.session_state["page_jump"] = total_pages
             st.rerun()
 
 
@@ -534,54 +554,55 @@ def vista_medico():
             st.divider()
 
             if buscar and not patients:
-                st.warning(f"No hay coincidencias para «{buscar}» en esta página.")
-                return
+                st.warning(f"No hay coincidencias para «{buscar}» en esta página. Prueba otra página o limpia el filtro.")
+            elif not patients:
+                st.info("No hay pacientes en esta página.")
+            else:
+                # Selector de paciente filtrado
+                options = {f"{p['name']} {p['family_name']}  —  ID {p['id']}  |  {p['identifier']}": p for p in patients}
+                selected_label = st.selectbox(
+                    "Seleccionar paciente",
+                    list(options.keys()),
+                    key="patient_select",
+                    help="Usa el buscador del panel izquierdo para filtrar la lista",
+                )
+                selected = options[selected_label]
+                patient_id = selected["id"]
 
-            # Selector de paciente filtrado
-            options = {f"{p['name']} {p['family_name']}  —  ID {p['id']}  |  {p['identifier']}": p for p in patients}
-            selected_label = st.selectbox(
-                "Seleccionar paciente",
-                list(options.keys()),
-                key="patient_select",
-                help="Usa el buscador del panel izquierdo para filtrar la lista",
-            )
-            selected = options[selected_label]
-            patient_id = selected["id"]
+                # Ficha del paciente con datos clínicos
+                with st.expander("📄 Ficha del paciente", expanded=True):
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Nombre", f"{selected['name']} {selected['family_name']}")
+                    c2.metric("Identifier", selected["identifier"])
+                    c3.metric("Fecha de nacimiento", selected.get("birth_date") or "—")
+                    c4, c5 = st.columns(2)
+                    c4.metric("Género", selected.get("gender") or "—")
+                    c5.metric("ID en sistema", selected["id"])
+                    if selected.get("identification_doc"):
+                        st.info(f"📋 **Documento:** {selected['identification_doc']}")
+                    if selected.get("medical_summary"):
+                        st.warning(f"📝 **Resumen médico:** {selected['medical_summary']}")
 
-            # Ficha del paciente con datos clínicos
-            with st.expander("📄 Ficha del paciente", expanded=True):
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Nombre", f"{selected['name']} {selected['family_name']}")
-                c2.metric("Identifier", selected["identifier"])
-                c3.metric("Fecha de nacimiento", selected.get("birth_date") or "—")
-                c4, c5 = st.columns(2)
-                c4.metric("Género", selected.get("gender") or "—")
-                c5.metric("ID en sistema", selected["id"])
-                if selected.get("identification_doc"):
-                    st.info(f"📋 **Documento:** {selected['identification_doc']}")
-                if selected.get("medical_summary"):
-                    st.warning(f"📝 **Resumen médico:** {selected['medical_summary']}")
-
-            st.divider()
-
-            # Gráficas
-            obs_r = api_request("GET", f"{API_BASE}/fhir/Observation",
-                                 params={"patient_id": patient_id, "limit": 500, "offset": 0})
-            observations = obs_r.json().get("items", []) if obs_r and obs_r.status_code == 200 else []
-
-            st.subheader("📈 Tendencias de parámetros clínicos")
-            render_charts(observations)
-
-            # Registrar nueva observación
-            st.divider()
-            st.subheader("➕ Registrar parámetro clínico")
-            form_nueva_observacion(patient_id)
-
-            # Tabla de observaciones
-            if observations:
                 st.divider()
-                st.subheader("📊 Historial de observaciones")
-                render_observation_table(observations)
+
+                # Gráficas
+                obs_r = api_request("GET", f"{API_BASE}/fhir/Observation",
+                                     params={"patient_id": patient_id, "limit": 500, "offset": 0})
+                observations = obs_r.json().get("items", []) if obs_r and obs_r.status_code == 200 else []
+
+                st.subheader("📈 Tendencias de parámetros clínicos")
+                render_charts(observations)
+
+                # Registrar nueva observación
+                st.divider()
+                st.subheader("➕ Registrar parámetro clínico")
+                form_nueva_observacion(patient_id)
+
+                # Tabla de observaciones
+                if observations:
+                    st.divider()
+                    st.subheader("📊 Historial de observaciones")
+                    render_observation_table(observations)
 
     # ── TAB: Nuevo paciente
     with tab_nuevo:
