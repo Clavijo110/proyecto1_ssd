@@ -170,20 +170,52 @@ def form_nueva_observacion(patient_id: int):
 
 
 def paginacion_controls(total: int, page_size: int, page_offset: int):
-    """Muestra controles de paginación y retorna si hubo cambio."""
+    """Paginación con botones primera/anterior/siguiente/última y salto directo a página."""
     total_pages = max(1, (total + page_size - 1) // page_size)
     current_page = (page_offset // page_size) + 1
-    col_prev, col_info, col_next = st.columns([1, 3, 1])
-    with col_prev:
-        if st.button("◀ Anterior", disabled=(page_offset == 0), key="btn_prev"):
+
+    c1, c2, c3, c4, c5 = st.columns([1, 1, 3, 1, 1])
+    with c1:
+        if st.button("⏮", help="Primera página", disabled=(current_page == 1), key="btn_first"):
+            st.session_state["page_offset"] = 0
+            st.rerun()
+    with c2:
+        if st.button("◀", help="Página anterior", disabled=(current_page == 1), key="btn_prev"):
             st.session_state["page_offset"] = max(0, page_offset - page_size)
             st.rerun()
-    with col_info:
-        st.caption(f"Página **{current_page}** de **{total_pages}** · Total: **{total}** pacientes")
-    with col_next:
-        if st.button("Siguiente ▶", disabled=(page_offset + page_size >= total), key="btn_next"):
+    with c3:
+        target = st.number_input(
+            "Ir a página",
+            min_value=1, max_value=total_pages,
+            value=current_page, step=1,
+            key="page_input",
+            label_visibility="collapsed",
+        )
+        st.caption(f"Página **{current_page}** de **{total_pages}** · **{total}** registros en total")
+        if int(target) != current_page:
+            st.session_state["page_offset"] = (int(target) - 1) * page_size
+            st.rerun()
+    with c4:
+        if st.button("▶", help="Página siguiente", disabled=(current_page >= total_pages), key="btn_next"):
             st.session_state["page_offset"] = page_offset + page_size
             st.rerun()
+    with c5:
+        if st.button("⏭", help="Última página", disabled=(current_page >= total_pages), key="btn_last"):
+            st.session_state["page_offset"] = (total_pages - 1) * page_size
+            st.rerun()
+
+
+def filtrar_pacientes(patients: list, query: str) -> list:
+    """Filtra la lista de pacientes por nombre, apellido o identifier (case-insensitive)."""
+    if not query.strip():
+        return patients
+    q = query.strip().lower()
+    return [
+        p for p in patients
+        if q in p.get("name", "").lower()
+        or q in p.get("family_name", "").lower()
+        or q in p.get("identifier", "").lower()
+    ]
 
 
 # ─────────────────────────────────────────
@@ -244,26 +276,33 @@ def vista_admin():
     st.title("🛡️ Panel de Administración")
     st.caption("Gestión de registros de pacientes. Los datos clínicos son de uso exclusivo del personal médico.")
 
+    # Controles en sidebar
     page_size = st.sidebar.selectbox("Registros por página", [10, 25, 50, 100], index=1, key="page_size")
+    buscar = st.sidebar.text_input("🔍 Buscar paciente", placeholder="Nombre, apellido o identifier...", key="buscar_admin")
     page_offset = st.session_state.get("page_offset", 0)
 
     r = api_request("GET", f"{API_BASE}/fhir/Patient", params={"limit": page_size, "offset": page_offset})
     if not r or r.status_code != 200:
         return
     data = r.json()
-    patients = data.get("items", [])
+    patients_page = data.get("items", [])
     total = data.get("total", 0)
 
-    tab_lista, tab_nuevo, tab_editar = st.tabs(["📋 Registros", "➕ Nuevo paciente", "✏️ Editar paciente"])
+    # Filtrado client-side sobre la página actual
+    patients = filtrar_pacientes(patients_page, buscar)
 
-    # ── TAB: Lista (solo datos identificativos, sin info clínica)
+    tab_lista, tab_nuevo, tab_editar = st.tabs(["📋 Registros", "➕ Nuevo paciente", "✏️ Editar / Eliminar"])
+
+    # ── TAB: Lista
     with tab_lista:
-        if not patients:
+        paginacion_controls(total, page_size, page_offset)
+        st.divider()
+
+        if buscar and not patients:
+            st.warning(f"No se encontraron pacientes que coincidan con «{buscar}» en esta página. Prueba en otra página o limpia el filtro.")
+        elif not patients_page:
             st.info("No hay pacientes registrados.")
         else:
-            paginacion_controls(total, page_size, page_offset)
-            st.divider()
-
             df = pd.DataFrame([{
                 "ID": p["id"],
                 "Identifier": p["identifier"],
@@ -273,29 +312,10 @@ def vista_admin():
                 "Género": p.get("gender") or "—",
             } for p in patients])
             st.dataframe(df, use_container_width=True, hide_index=True)
+            if buscar:
+                st.caption(f"Mostrando {len(patients)} resultado(s) filtrados de {len(patients_page)} en esta página.")
 
-            st.divider()
-            st.subheader("Eliminar paciente")
-            del_options = {f"ID {p['id']} – {p['name']} {p['family_name']}": p["id"] for p in patients}
-            del_sel = st.selectbox("Seleccionar paciente a eliminar", list(del_options.keys()), key="del_select")
-            del_id = del_options[del_sel]
-
-            col_btn, col_warn = st.columns([1, 3])
-            with col_btn:
-                if st.button("🗑️ Eliminar", type="secondary"):
-                    if st.session_state.get("confirm_delete") == del_id:
-                        r2 = api_request("DELETE", f"{API_BASE}/fhir/Patient/{del_id}")
-                        if r2 and r2.status_code == 200:
-                            st.success("Paciente eliminado.")
-                            st.session_state.pop("confirm_delete", None)
-                            st.rerun()
-                    else:
-                        st.session_state["confirm_delete"] = del_id
-            with col_warn:
-                if st.session_state.get("confirm_delete") == del_id:
-                    st.warning("⚠️ Haz clic en **Eliminar** de nuevo para confirmar.")
-
-    # ── TAB: Nuevo paciente (solo campos identificativos, sin datos clínicos)
+    # ── TAB: Nuevo paciente
     with tab_nuevo:
         st.subheader("Registrar nuevo paciente")
         with st.form("crear_paciente"):
@@ -321,43 +341,81 @@ def vista_admin():
                         st.success(f"Paciente **{name} {family_name}** creado correctamente.")
                         st.rerun()
 
-    # ── TAB: Editar (solo campos identificativos, sin datos clínicos)
+    # ── TAB: Editar / Eliminar (usa el filtro de búsqueda del sidebar)
     with tab_editar:
-        if not patients:
-            st.info("No hay pacientes para editar.")
+        pool = patients if patients else patients_page
+        if not pool:
+            st.info("No hay pacientes registrados.")
         else:
-            edit_options = {f"ID {p['id']} – {p['name']} {p['family_name']}": p["id"] for p in patients}
-            edit_sel = st.selectbox("Seleccionar paciente", list(edit_options.keys()), key="edit_select")
-            edit_id = edit_options[edit_sel]
+            if buscar and not patients:
+                st.warning(f"No hay coincidencias para «{buscar}» en esta página.")
+            else:
+                # ── Sección editar
+                st.subheader("✏️ Editar datos")
+                edit_options = {f"{p['name']} {p['family_name']}  —  ID {p['id']}  |  {p['identifier']}": p["id"] for p in pool}
+                edit_sel = st.selectbox(
+                    "Seleccionar paciente a editar",
+                    list(edit_options.keys()),
+                    key="edit_select",
+                    help="Usa el buscador del panel izquierdo para filtrar la lista",
+                )
+                edit_id = edit_options[edit_sel]
 
-            rp = api_request("GET", f"{API_BASE}/fhir/Patient/{edit_id}")
-            if rp and rp.status_code == 200:
-                p = rp.json()
-                with st.form("editar_paciente"):
-                    st.subheader(f"Editando: {p['name']} {p['family_name']}")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        name = st.text_input("Nombre", value=p.get("name", ""))
-                        family_name = st.text_input("Apellido", value=p.get("family_name", ""))
-                    with c2:
-                        birth_date = st.text_input("Fecha de nacimiento", value=p.get("birth_date") or "")
-                        _opts = ["", "male", "female", "other"]
-                        _g = p.get("gender") or ""
-                        gender = st.selectbox("Género", _opts, index=_opts.index(_g) if _g in _opts else 0)
-                    if st.form_submit_button("Guardar cambios", type="primary"):
-                        body = {}
-                        if name:
-                            body["name"] = name
-                        if family_name:
-                            body["family_name"] = family_name
-                        if birth_date:
-                            body["birth_date"] = birth_date
-                        if gender:
-                            body["gender"] = gender
-                        r2 = api_request("PUT", f"{API_BASE}/fhir/Patient/{edit_id}", json=body)
-                        if r2 and r2.status_code == 200:
-                            st.success("Paciente actualizado.")
-                            st.rerun()
+                rp = api_request("GET", f"{API_BASE}/fhir/Patient/{edit_id}")
+                if rp and rp.status_code == 200:
+                    p = rp.json()
+                    with st.form("editar_paciente"):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            name = st.text_input("Nombre", value=p.get("name", ""))
+                            family_name = st.text_input("Apellido", value=p.get("family_name", ""))
+                        with c2:
+                            birth_date = st.text_input("Fecha de nacimiento", value=p.get("birth_date") or "")
+                            _opts = ["", "male", "female", "other"]
+                            _g = p.get("gender") or ""
+                            gender = st.selectbox("Género", _opts, index=_opts.index(_g) if _g in _opts else 0)
+                        if st.form_submit_button("Guardar cambios", type="primary"):
+                            body = {}
+                            if name:
+                                body["name"] = name
+                            if family_name:
+                                body["family_name"] = family_name
+                            if birth_date:
+                                body["birth_date"] = birth_date
+                            if gender:
+                                body["gender"] = gender
+                            r2 = api_request("PUT", f"{API_BASE}/fhir/Patient/{edit_id}", json=body)
+                            if r2 and r2.status_code == 200:
+                                st.success("Paciente actualizado.")
+                                st.rerun()
+
+                st.divider()
+
+                # ── Sección eliminar
+                st.subheader("🗑️ Eliminar paciente")
+                del_options = {f"{p['name']} {p['family_name']}  —  ID {p['id']}  |  {p['identifier']}": p["id"] for p in pool}
+                del_sel = st.selectbox(
+                    "Seleccionar paciente a eliminar",
+                    list(del_options.keys()),
+                    key="del_select",
+                    help="Usa el buscador del panel izquierdo para filtrar la lista",
+                )
+                del_id = del_options[del_sel]
+
+                col_btn, col_warn = st.columns([1, 3])
+                with col_btn:
+                    if st.button("🗑️ Eliminar", type="secondary"):
+                        if st.session_state.get("confirm_delete") == del_id:
+                            r2 = api_request("DELETE", f"{API_BASE}/fhir/Patient/{del_id}")
+                            if r2 and r2.status_code == 200:
+                                st.success("Paciente eliminado.")
+                                st.session_state.pop("confirm_delete", None)
+                                st.rerun()
+                        else:
+                            st.session_state["confirm_delete"] = del_id
+                with col_warn:
+                    if st.session_state.get("confirm_delete") == del_id:
+                        st.warning("⚠️ Haz clic en **Eliminar** de nuevo para confirmar la eliminación.")
 
 
 # ─────────────────────────────────────────
@@ -372,28 +430,40 @@ def vista_medico():
     st.title("🩺 Estación de Trabajo Médica")
 
     page_size = st.sidebar.selectbox("Pacientes por página", [10, 25, 50, 100], index=1, key="page_size")
+    buscar = st.sidebar.text_input("🔍 Buscar paciente", placeholder="Nombre, apellido o identifier...", key="buscar_medico")
     page_offset = st.session_state.get("page_offset", 0)
 
     r = api_request("GET", f"{API_BASE}/fhir/Patient", params={"limit": page_size, "offset": page_offset})
     if not r or r.status_code != 200:
         return
     data = r.json()
-    patients = data.get("items", [])
+    patients_page = data.get("items", [])
     total = data.get("total", 0)
+
+    patients = filtrar_pacientes(patients_page, buscar)
 
     tab_hc, tab_nuevo, tab_editar = st.tabs(["📋 Historia clínica", "➕ Nuevo paciente", "✏️ Editar paciente"])
 
     # ── TAB: Historia clínica
     with tab_hc:
-        if not patients:
+        if not patients_page:
             st.info("No hay pacientes registrados. Crea uno en la pestaña 'Nuevo paciente'.")
         else:
             paginacion_controls(total, page_size, page_offset)
             st.divider()
 
-            # Selector de paciente
-            options = {f"{p['name']} {p['family_name']} (ID: {p['id']})": p for p in patients}
-            selected_label = st.selectbox("Seleccionar paciente", list(options.keys()), key="patient_select")
+            if buscar and not patients:
+                st.warning(f"No hay coincidencias para «{buscar}» en esta página.")
+                return
+
+            # Selector de paciente filtrado
+            options = {f"{p['name']} {p['family_name']}  —  ID {p['id']}  |  {p['identifier']}": p for p in patients}
+            selected_label = st.selectbox(
+                "Seleccionar paciente",
+                list(options.keys()),
+                key="patient_select",
+                help="Usa el buscador del panel izquierdo para filtrar la lista",
+            )
             selected = options[selected_label]
             patient_id = selected["id"]
 
@@ -464,47 +534,56 @@ def vista_medico():
                         st.success(f"Paciente **{name} {family_name}** creado.")
                         st.rerun()
 
-    # ── TAB: Editar
+    # ── TAB: Editar (médico)
     with tab_editar:
-        if not patients:
+        pool_m = patients if patients else patients_page
+        if not pool_m:
             st.info("No hay pacientes para editar.")
         else:
-            edit_options = {f"{p['name']} {p['family_name']} (ID:{p['id']})": p["id"] for p in patients}
-            edit_sel = st.selectbox("Seleccionar paciente", list(edit_options.keys()), key="edit_select")
-            edit_id = edit_options[edit_sel]
+            if buscar and not patients:
+                st.warning(f"No hay coincidencias para «{buscar}» en esta página. Limpia el filtro o navega a otra página.")
+            else:
+                edit_options = {f"{p['name']} {p['family_name']}  —  ID {p['id']}  |  {p['identifier']}": p["id"] for p in pool_m}
+                edit_sel = st.selectbox(
+                    "Seleccionar paciente",
+                    list(edit_options.keys()),
+                    key="edit_select",
+                    help="Usa el buscador del panel izquierdo para filtrar la lista",
+                )
+                edit_id = edit_options[edit_sel]
 
-            rp = api_request("GET", f"{API_BASE}/fhir/Patient/{edit_id}")
-            if rp and rp.status_code == 200:
-                p = rp.json()
-                with st.form("editar_paciente"):
-                    st.subheader(f"Editando: {p['name']} {p['family_name']}")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        name = st.text_input("Nombre", value=p.get("name", ""))
-                        family_name = st.text_input("Apellido", value=p.get("family_name", ""))
-                        birth_date = st.text_input("Fecha de nacimiento", value=p.get("birth_date") or "")
-                        _opts = ["", "male", "female", "other"]
-                        _g = p.get("gender") or ""
-                        gender = st.selectbox("Género", _opts, index=_opts.index(_g) if _g in _opts else 0)
-                    with c2:
-                        identification_doc = st.text_input("Documento", value=p.get("identification_doc") or "")
-                        medical_summary = st.text_area("Resumen médico", value=p.get("medical_summary") or "")
-                    if st.form_submit_button("Guardar cambios", type="primary"):
-                        body = {}
-                        if name:
-                            body["name"] = name
-                        if family_name:
-                            body["family_name"] = family_name
-                        if birth_date:
-                            body["birth_date"] = birth_date
-                        if gender:
-                            body["gender"] = gender
-                        body["identification_doc"] = identification_doc or None
-                        body["medical_summary"] = medical_summary or None
-                        r2 = api_request("PUT", f"{API_BASE}/fhir/Patient/{edit_id}", json=body)
-                        if r2 and r2.status_code == 200:
-                            st.success("Paciente actualizado.")
-                            st.rerun()
+                rp = api_request("GET", f"{API_BASE}/fhir/Patient/{edit_id}")
+                if rp and rp.status_code == 200:
+                    p = rp.json()
+                    with st.form("editar_paciente"):
+                        st.subheader(f"Editando: {p['name']} {p['family_name']}")
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            name = st.text_input("Nombre", value=p.get("name", ""))
+                            family_name = st.text_input("Apellido", value=p.get("family_name", ""))
+                            birth_date = st.text_input("Fecha de nacimiento", value=p.get("birth_date") or "")
+                            _opts = ["", "male", "female", "other"]
+                            _g = p.get("gender") or ""
+                            gender = st.selectbox("Género", _opts, index=_opts.index(_g) if _g in _opts else 0)
+                        with c2:
+                            identification_doc = st.text_input("Documento", value=p.get("identification_doc") or "")
+                            medical_summary = st.text_area("Resumen médico", value=p.get("medical_summary") or "")
+                        if st.form_submit_button("Guardar cambios", type="primary"):
+                            body = {}
+                            if name:
+                                body["name"] = name
+                            if family_name:
+                                body["family_name"] = family_name
+                            if birth_date:
+                                body["birth_date"] = birth_date
+                            if gender:
+                                body["gender"] = gender
+                            body["identification_doc"] = identification_doc or None
+                            body["medical_summary"] = medical_summary or None
+                            r2 = api_request("PUT", f"{API_BASE}/fhir/Patient/{edit_id}", json=body)
+                            if r2 and r2.status_code == 200:
+                                st.success("Paciente actualizado.")
+                                st.rerun()
 
 
 # ─────────────────────────────────────────
