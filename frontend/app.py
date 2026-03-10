@@ -179,7 +179,7 @@ def render_observation_table(observations: list):
     df = pd.DataFrame(observations)
     df["outlier"] = df.apply(lambda r: is_outlier(r["code"], r["value_quantity"]), axis=1)
     display_df = df[["id", "code", "value_quantity", "unit", "effective_datetime"]].copy()
-    display_df.columns = ["ID", "Signo Vital", "Valor", "Unidad", "Fecha y Hora"]
+    display_df.columns = ["ID", "Parámetro clínico", "Valor", "Unidad", "Fecha y Hora"]
     outlier_flags = df["outlier"]
 
     def highlight(row):
@@ -195,7 +195,7 @@ def form_nueva_observacion(patient_id: int):
     """
     # Selección fuera del form → provoca rerun inmediato al cambiar
     code = st.selectbox(
-        "Signo vital",
+        "Parámetro clínico",
         SIGNOS_VITALES,
         format_func=lambda k: f"{SIGNOS_VITALES_INFO[k]['label']} ({SIGNOS_VITALES_INFO[k]['unit']})",
         key=f"obs_code_{patient_id}",
@@ -559,12 +559,12 @@ def vista_medico():
                                  params={"patient_id": patient_id, "limit": 500, "offset": 0})
             observations = obs_r.json().get("items", []) if obs_r and obs_r.status_code == 200 else []
 
-            st.subheader("📈 Tendencias de signos vitales")
+            st.subheader("📈 Tendencias de parámetros clínicos")
             render_charts(observations)
 
             # Registrar nueva observación
             st.divider()
-            st.subheader("➕ Registrar signo vital")
+            st.subheader("➕ Registrar parámetro clínico")
             form_nueva_observacion(patient_id)
 
             # Tabla de observaciones
@@ -672,7 +672,7 @@ def vista_paciente():
         return
 
     st.title("👤 Mi Historia Clínica")
-    st.caption("Vista de solo lectura. Aquí puedes consultar tus datos y el seguimiento de tus signos vitales.")
+    st.caption("Vista de solo lectura. Aquí puedes consultar tus datos y el seguimiento de tus parámetros clínicos.")
 
     # Cargar datos propios
     rp = api_request("GET", f"{API_BASE}/fhir/Patient/{user_id}")
@@ -700,7 +700,7 @@ def vista_paciente():
                          params={"patient_id": user_id, "limit": 500, "offset": 0})
     observations = obs_r.json().get("items", []) if obs_r and obs_r.status_code == 200 else []
 
-    st.subheader("📈 Mis signos vitales")
+    st.subheader("📈 Mis parámetros clínicos")
     render_charts(observations)
 
     if observations:
