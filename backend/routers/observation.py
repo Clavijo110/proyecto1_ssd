@@ -66,7 +66,15 @@ def create_observation(
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_permission("create")),
 ):
-    """POST /fhir/Observation. Solo Admin y Médico."""
+    """POST /fhir/Observation. Solo Admin y Médico.
+    Rechaza valores fuera del rango fisiológicamente posible (422).
+    """
+    # Validación clínica cruzada (code + value_quantity)
+    try:
+        body.validate_clinical_range()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     patient = db.query(Patient).filter(Patient.id == body.patient_id).first()
     if not patient:
         raise HTTPException(404, "Paciente no encontrado")

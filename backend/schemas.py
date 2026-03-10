@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Patient FHIR-Lite ---
@@ -45,14 +45,67 @@ class PatientResponse(BaseModel):
 
 # --- Observation FHIR-Lite ---
 
+# Rangos clínicamente imposibles por código de parámetro.
+# Valores fuera de estos límites son fisiológicamente inviables
+# y se rechazan con HTTP 422 antes de llegar a la base de datos.
+CLINICAL_LIMITS: dict[str, tuple[float, float]] = {
+    "heart-rate":               (0.0,   350.0),   # beats/min
+    "temperature":              (10.0,  50.0),     # °C
+    "blood-pressure-systolic":  (10.0,  350.0),   # mmHg
+    "blood-pressure-diastolic": (5.0,   250.0),   # mmHg
+    "respiratory-rate":         (0.0,   100.0),   # resp/min
+    "oxygen-saturation":        (0.0,   100.0),   # %
+    "body-weight":              (0.1,   700.0),   # kg
+    "body-height":              (10.0,  300.0),   # cm
+    "bmi":                      (2.0,   200.0),   # kg/m²
+    "blood-glucose":            (0.0,   2000.0),  # mg/dL
+}
+
+VALID_CODES = set(CLINICAL_LIMITS.keys())
+
+
 class ObservationCreate(BaseModel):
-    """Crear observación (signo vital)."""
+    """Crear observación (parámetro clínico).
+    Valida que el código sea conocido y que el valor sea fisiológicamente posible.
+    """
     patient_id: int
-    code: str  # blood-pressure, heart-rate, temperature, etc.
+    code: str
     display: Optional[str] = None
     value_quantity: float
     unit: Optional[str] = None
     effective_datetime: Optional[datetime] = None
+
+    @field_validator("code")
+    @classmethod
+    def code_must_be_valid(cls, v: str) -> str:
+        normalized = v.lower().strip()
+        if normalized not in VALID_CODES:
+            raise ValueError(
+                f"Código '{v}' no reconocido. "
+                f"Valores aceptados: {', '.join(sorted(VALID_CODES))}"
+            )
+        return normalized
+
+    @field_validator("value_quantity")
+    @classmethod
+    def value_must_be_positive(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("El valor no puede ser negativo.")
+        return v
+
+    def validate_clinical_range(self) -> None:
+        """Llamar desde el endpoint tras construir el objeto.
+        Separado para poder acceder a self.code ya normalizado.
+        """
+        limits = CLINICAL_LIMITS.get(self.code)
+        if limits is None:
+            return
+        lo, hi = limits
+        if not (lo <= self.value_quantity <= hi):
+            raise ValueError(
+                f"Valor {self.value_quantity} fuera del rango fisiológicamente posible "
+                f"para '{self.code}' ({lo} – {hi}). Registro rechazado."
+            )
 
 
 class ObservationResponse(BaseModel):
