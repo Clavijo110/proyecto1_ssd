@@ -1,9 +1,10 @@
 """Endpoints FHIR Observation con paginación."""
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
+from limiter import limiter
 from models import Observation, Patient, ApiKey
 from schemas import ObservationCreate, ObservationResponse, PaginatedResponse
 from auth import require_permission
@@ -12,15 +13,17 @@ router = APIRouter(prefix="/fhir/Observation", tags=["FHIR Observation"])
 
 
 @router.get("", response_model=PaginatedResponse)
+@limiter.limit("60/minute")
 def list_observations(
+    request: Request,
     patient_id: int | None = None,
-    limit: int = 10,
-    offset: int = 0,
+    limit: int = Query(default=25, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_permission("read")),
 ):
     """
-    GET /fhir/Observation?patient_id=1&limit=10&offset=0
+    GET /fhir/Observation?patient_id=1&limit=25&offset=0
     Paginación. Paciente solo ve las suyas (patient_id = user_id).
     """
     q = db.query(Observation)
@@ -37,7 +40,9 @@ def list_observations(
 
 
 @router.get("/{observation_id}", response_model=ObservationResponse)
+@limiter.limit("60/minute")
 def get_observation(
+    request: Request,
     observation_id: int,
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_permission("read")),
@@ -54,7 +59,9 @@ def get_observation(
 
 
 @router.post("", response_model=ObservationResponse)
+@limiter.limit("20/minute")
 def create_observation(
+    request: Request,
     body: ObservationCreate,
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_permission("create")),
@@ -79,7 +86,9 @@ def create_observation(
 
 
 @router.delete("/{observation_id}")
+@limiter.limit("5/minute")
 def delete_observation(
+    request: Request,
     observation_id: int,
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_permission("delete")),

@@ -1,8 +1,9 @@
 """Endpoints FHIR Patient con paginación."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
+from limiter import limiter
 from models import Patient, ApiKey
 from schemas import PatientCreate, PatientUpdate, PatientResponse, PaginatedResponse
 from auth import get_api_keys, require_permission
@@ -12,15 +13,17 @@ router = APIRouter(prefix="/fhir/Patient", tags=["FHIR Patient"])
 
 
 @router.get("", response_model=PaginatedResponse)
+@limiter.limit("60/minute")
 def list_patients(
-    limit: int = 10,
-    offset: int = 0,
+    request: Request,
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_permission("read")),
 ):
     """
-    GET /fhir/Patient?limit=10&offset=0
-    Paginación: limit y offset.
+    GET /fhir/Patient?limit=25&offset=0
+    Paginación: limit (máx 100) y offset.
     Paciente solo ve los suyos (filtrado por user_id).
     """
     q = db.query(Patient)
@@ -47,7 +50,9 @@ def _check_patient_access(patient_id: int, api_key: ApiKey):
 
 
 @router.get("/{patient_id}", response_model=PatientResponse)
+@limiter.limit("60/minute")
 def get_patient(
+    request: Request,
     patient_id: int,
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(get_api_keys),
@@ -66,7 +71,9 @@ def get_patient(
 
 
 @router.post("", response_model=PatientResponse)
+@limiter.limit("10/minute")
 def create_patient(
+    request: Request,
     body: PatientCreate,
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_permission("create")),
@@ -96,7 +103,9 @@ def create_patient(
 
 
 @router.put("/{patient_id}", response_model=PatientResponse)
+@limiter.limit("10/minute")
 def update_patient(
+    request: Request,
     patient_id: int,
     body: PatientUpdate,
     db: Session = Depends(get_db),
@@ -126,7 +135,9 @@ def update_patient(
 
 
 @router.delete("/{patient_id}")
+@limiter.limit("5/minute")
 def delete_patient(
+    request: Request,
     patient_id: int,
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_permission("delete")),
