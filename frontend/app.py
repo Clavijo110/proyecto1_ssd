@@ -12,23 +12,65 @@ st.set_page_config(page_title="FHIR-Lite Dashboard Clínico", page_icon="🏥", 
 
 API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-OUTLIER_LIMITS = {
-    "temperature": (35.0, 42.0),
-    "heart-rate": (40, 180),
-    "blood-pressure-systolic": (70, 200),
-    "blood-pressure-diastolic": (40, 130),
-    "blood-pressure": (40, 200),
-    "respiratory-rate": (8, 40),
+# Catálogo de signos vitales según estándar FHIR-Lite / LOINC
+# Campos: label, unit, step, fmt, outlier (lo, hi), normal (lo, hi)
+SIGNOS_VITALES_INFO = {
+    "heart-rate": {
+        "label": "Frecuencia cardíaca",
+        "unit": "beats/min", "step": 1.0, "fmt": "%.0f",
+        "outlier": (40, 180), "normal": (60, 100),
+    },
+    "temperature": {
+        "label": "Temperatura corporal",
+        "unit": "°C", "step": 0.1, "fmt": "%.1f",
+        "outlier": (35.0, 42.0), "normal": (36.1, 37.5),
+    },
+    "blood-pressure-systolic": {
+        "label": "Presión arterial sistólica",
+        "unit": "mmHg", "step": 1.0, "fmt": "%.0f",
+        "outlier": (70, 200), "normal": (90, 120),
+    },
+    "blood-pressure-diastolic": {
+        "label": "Presión arterial diastólica",
+        "unit": "mmHg", "step": 1.0, "fmt": "%.0f",
+        "outlier": (40, 130), "normal": (60, 80),
+    },
+    "respiratory-rate": {
+        "label": "Frecuencia respiratoria",
+        "unit": "resp/min", "step": 1.0, "fmt": "%.0f",
+        "outlier": (8, 40), "normal": (12, 20),
+    },
+    "oxygen-saturation": {
+        "label": "Saturación de oxígeno (SpO₂)",
+        "unit": "%", "step": 0.5, "fmt": "%.1f",
+        "outlier": (90.0, 100.0), "normal": (95.0, 100.0),
+    },
+    "body-weight": {
+        "label": "Peso corporal",
+        "unit": "kg", "step": 0.1, "fmt": "%.1f",
+        "outlier": (2.0, 300.0), "normal": (3.0, 200.0),
+    },
+    "body-height": {
+        "label": "Talla corporal",
+        "unit": "cm", "step": 0.5, "fmt": "%.1f",
+        "outlier": (30.0, 250.0), "normal": (45.0, 220.0),
+    },
+    "bmi": {
+        "label": "Índice de masa corporal (IMC)",
+        "unit": "kg/m²", "step": 0.1, "fmt": "%.1f",
+        "outlier": (10.0, 70.0), "normal": (18.5, 24.9),
+    },
+    "blood-glucose": {
+        "label": "Glucosa en sangre",
+        "unit": "mg/dL", "step": 1.0, "fmt": "%.0f",
+        "outlier": (40.0, 600.0), "normal": (70.0, 100.0),
+    },
 }
-SIGNOS_VITALES = [
-    "heart-rate", "temperature", "blood-pressure",
-    "blood-pressure-systolic", "blood-pressure-diastolic", "respiratory-rate",
-]
-UNIDADES = {
-    "heart-rate": "beats/min", "temperature": "°C",
-    "blood-pressure": "mmHg", "blood-pressure-systolic": "mmHg",
-    "blood-pressure-diastolic": "mmHg", "respiratory-rate": "resp/min",
-}
+
+# Derivados para compatibilidad con el resto del código
+OUTLIER_LIMITS = {code: info["outlier"] for code, info in SIGNOS_VITALES_INFO.items()}
+SIGNOS_VITALES = list(SIGNOS_VITALES_INFO.keys())
+UNIDADES = {code: info["unit"] for code, info in SIGNOS_VITALES_INFO.items()}
 ROLE_LABELS = {"admin": "Administrador", "medico": "Médico", "paciente": "Paciente"}
 ROLE_ICONS = {"admin": "🛡️", "medico": "🩺", "paciente": "👤"}
 
@@ -147,26 +189,55 @@ def render_observation_table(observations: list):
 
 
 def form_nueva_observacion(patient_id: int):
-    """Formulario para registrar un signo vital."""
-    with st.form("crear_obs"):
-        c1, c2, c3 = st.columns(3)
+    """Formulario para registrar un signo vital.
+    El selectbox está fuera del form para que la unidad y el rango se actualicen
+    automáticamente al cambiar el signo vital.
+    """
+    # Selección fuera del form → provoca rerun inmediato al cambiar
+    code = st.selectbox(
+        "Signo vital",
+        SIGNOS_VITALES,
+        format_func=lambda k: f"{SIGNOS_VITALES_INFO[k]['label']} ({SIGNOS_VITALES_INFO[k]['unit']})",
+        key=f"obs_code_{patient_id}",
+    )
+    info = SIGNOS_VITALES_INFO[code]
+    n_lo, n_hi = info["normal"]
+    o_lo, o_hi = info["outlier"]
+
+    col_info1, col_info2 = st.columns(2)
+    col_info1.info(f"**Unidad:** {info['unit']}  ·  **Rango normal:** {n_lo} – {n_hi} {info['unit']}")
+    col_info2.warning(f"**Alerta outlier** si valor < {o_lo} o > {o_hi} {info['unit']}")
+
+    with st.form(f"crear_obs_{patient_id}"):
+        c1, c2 = st.columns(2)
         with c1:
-            code = st.selectbox("Signo vital", SIGNOS_VITALES)
+            value = st.number_input(
+                f"Valor ({info['unit']})",
+                min_value=0.0,
+                step=info["step"],
+                format=info["fmt"],
+            )
         with c2:
-            value = st.number_input("Valor", min_value=0.0, step=0.1, format="%.1f")
-        with c3:
-            unit = st.text_input("Unidad", value=UNIDADES.get(code, ""))
-        display = st.text_input("Descripción (opcional)")
+            display = st.text_input("Descripción (opcional)", placeholder="Ej: en reposo, ayunas...")
+
         if st.form_submit_button("Registrar observación", type="primary"):
-            body = {"patient_id": patient_id, "code": code, "value_quantity": value}
-            if unit:
-                body["unit"] = unit
-            if display:
-                body["display"] = display
-            r = api_request("POST", f"{API_BASE}/fhir/Observation", json=body)
-            if r and r.status_code in (200, 201):
-                st.success("Observación registrada.")
-                st.rerun()
+            if value <= 0:
+                st.error("El valor debe ser mayor a 0.")
+            else:
+                if value < o_lo or value > o_hi:
+                    st.warning(f"⚠️ Valor fuera del rango clínico ({o_lo}–{o_hi} {info['unit']}). Se registrará de todas formas.")
+                body = {
+                    "patient_id": patient_id,
+                    "code": code,
+                    "value_quantity": value,
+                    "unit": info["unit"],
+                }
+                if display:
+                    body["display"] = display
+                r = api_request("POST", f"{API_BASE}/fhir/Observation", json=body)
+                if r and r.status_code in (200, 201):
+                    st.success(f"✅ Observación registrada: {info['label']} = {value} {info['unit']}")
+                    st.rerun()
 
 
 def paginacion_controls(total: int, page_size: int, page_offset: int):
