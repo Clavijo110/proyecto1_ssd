@@ -418,7 +418,7 @@ def vista_admin():
                         body["gender"] = gender
                     r2 = api_request("POST", f"{API_BASE}/fhir/Patient", json=body)
                     if r2 and r2.status_code in (200, 201):
-                        st.success(f"Paciente **{name} {family_name}** creado correctamente.")
+                        st.success(f"✅ ¡Paciente **{name} {family_name}** creado exitosamente!")
                         st.rerun()
 
     # ── TAB: Editar / Eliminar — selectbox por ID, form muestra datos reales para corrección
@@ -612,7 +612,7 @@ def vista_medico():
                         body["medical_summary"] = medical_summary
                     r2 = api_request("POST", f"{API_BASE}/fhir/Patient", json=body)
                     if r2 and r2.status_code in (200, 201):
-                        st.success(f"Paciente **{name} {family_name}** creado.")
+                        st.success(f"✅ ¡Paciente **{name} {family_name}** creado exitosamente!")
                         st.rerun()
 
     # ── TAB: Editar (médico)
